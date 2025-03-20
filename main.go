@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Worker is responsible for running the sample collection and verification process
 func Worker(ctx context.Context, wg *sync.WaitGroup, id int) {
 	defer wg.Done()
 	for {
@@ -31,34 +32,53 @@ func Worker(ctx context.Context, wg *sync.WaitGroup, id int) {
 }
 
 func main() {
-	err := godotenv.Load()
+	// Load environment variables from .env
+	err := godotenv.Load("/root/list-node/light-node/.env") // Use absolute path
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatalf("❌ Error loading .env file: %v", err)
 	}
 
+	fmt.Println("✅ ENV Loaded Successfully")
+
+	// Try reading environment variables for debugging
+	grpcURL := os.Getenv("GRPC_URL")
+	if grpcURL == "" {
+		log.Fatal("❌ GRPC_URL is not set in .env file")
+	}
+	fmt.Printf("🔹 GRPC_URL: %s\n", grpcURL)
+
+	privateKey := os.Getenv("PRIVATE_KEY")
+	if privateKey == "" {
+		log.Fatal("❌ PRIVATE_KEY is not set in .env file")
+	}
+	fmt.Println("🔹 PRIVATE_KEY loaded successfully")
+
+	// Get Public Key from utils
 	pubKey, err := utils.GetCompressedPublicKey()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatalf("❌ Failed to get compressed public key: %v", err)
 	}
-	log.Printf("Compressed Public Key: %s", pubKey)
+	fmt.Printf("🔹 Compressed Public Key: %s\n", pubKey)
 
+	// Initialize context for handling graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var wg sync.WaitGroup
-
 	signalChan := make(chan os.Signal, 1)
 
-	signal.Notify(signalChan, syscall.SIGABRT, syscall.SIGTERM)
+	// Capture system signals for a clean shutdown
+	signal.Notify(signalChan, syscall.SIGABRT, syscall.SIGTERM, syscall.SIGINT)
 
 	wg.Add(1)
 	go Worker(ctx, &wg, 1)
 
+	// Wait for interrupt signal
 	<-signalChan
-	fmt.Println("\nReceived interrupt signal. Shutting down gracefully...")
+	fmt.Println("\n⚠️ Received interrupt signal. Shutting down gracefully...")
 
+	// Cancel worker process
 	cancel()
-
 	wg.Wait()
-	fmt.Println("Worker has shut down. Exiting..")
+	fmt.Println("✅ Worker has shut down. Exiting..")
 }
